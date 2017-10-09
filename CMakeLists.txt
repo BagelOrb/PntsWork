@@ -32,6 +32,15 @@ find_package(GLEW REQUIRED)
 include_directories(${GLEW_INCLUDE_PATH})
 
 
+###########################
+# Find Eigen
+###############
+
+find_package(Eigen3 REQUIRED)
+
+include_directories(${EIGEN3_INCLUDE_DIR})
+
+
 file(GLOB SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/GLKLib/GLK.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/GLKLib/GLKGeometry.cpp

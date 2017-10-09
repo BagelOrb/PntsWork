@@ -41,6 +41,7 @@ public:
 	void SetPntPosArrayPtr(float *ptr) {m_pntPosArray=ptr;};
 	void SetNormalArrayPtr(float *ptr) {m_normalArray=ptr;};
 
+    void calculateNormals();
 private:
 	bool m_Lighting;	float m_range;
 	int m_drawListID_Points, m_drawListID_NormalArrow;

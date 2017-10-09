@@ -18,7 +18,12 @@
 
 #include "PntsSetBody.h"
 
-#include "utils/SparseGrid.h"
+#include "utils/SparsePointGrid.h"
+using namespace cura;
+
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Eigenvalues>
+using namespace Eigen;
 
 extern GLK _pGLK;
 
@@ -291,4 +296,68 @@ bool PntsSetBody::ExportOBJFile(char *filename)
 	fclose(fp);
 
 	return true;
+}
+
+void PntsSetBody::calculateNormals()
+{
+    struct Locator
+    {
+        FPoint3 operator()(const FPoint3& p) const
+        { 
+            return p;
+        }
+    };
+    float cell_size = 7.0;
+    SparsePointGrid<FPoint3, Locator> grid(cell_size);
+    
+    for (int i = 0; i < m_pntsNum; i++)
+    {
+        float& x = m_pntPosArray[i * 3];
+        float& y = m_pntPosArray[i * 3 + 1];
+        float& z = m_pntPosArray[i * 3 + 2];
+        grid.insert(FPoint3(x, y, z));
+    }
+    
+    int k = 20;
+    
+    for (int i = 0; i < m_pntsNum; i++)
+    {
+        FPoint3 p(m_pntPosArray[i * 3], m_pntPosArray[i * 3 + 1], m_pntPosArray[i * 3 + 2]);
+        std::vector<FPoint3> knn = grid.getKnn(p, k, cell_size);
+        Eigen::MatrixXf mat(knn.size(), 3);
+        for (int nn_idx = 0; nn_idx < knn.size(); nn_idx++)
+        {
+            const FPoint3& nn = knn[nn_idx];
+            mat(nn_idx, 0) = nn.x;
+            mat(nn_idx, 1) = nn.y;
+            mat(nn_idx, 2) = nn.z;
+        }
+        MatrixXf centered = mat.rowwise() - mat.colwise().mean();
+        MatrixXf cov = (centered.adjoint() * centered) / double(mat.rows() - 1);
+        SelfAdjointEigenSolver<MatrixXf> es;
+        es.compute(cov);
+        Vector3f eigenvalues = es.eigenvalues();
+        int lowest_eigenvalue_idx = 0;
+        float lowest_eigenvalue = eigenvalues[0];
+        for (int eigenvalue_idx = 1; eigenvalue_idx < 3; eigenvalue_idx++)
+        {
+            if (eigenvalues[eigenvalue_idx] < lowest_eigenvalue)
+            {
+                lowest_eigenvalue = eigenvalues[eigenvalue_idx];
+                lowest_eigenvalue_idx = eigenvalue_idx;
+            }
+        }
+        Vector3f last_component = es.eigenvectors().col(lowest_eigenvalue_idx);
+        if (last_component[2] < 0)
+        {
+            last_component *= -1.0;
+        }
+        float& normal_x = m_normalArray[i * 3];
+        float& normal_y = m_normalArray[i * 3 + 1];
+        float& normal_z = m_normalArray[i * 3 + 2];
+        normal_x = last_component[0];
+        normal_y = last_component[1];
+        normal_z = last_component[2];
+        
+    }
 }

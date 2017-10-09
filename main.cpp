@@ -5,6 +5,7 @@
 #include <GL/glut.h>
 #include <sys/uio.h>
 #include <dirent.h>
+#include <iostream>
 #else
 #include <GL/glew.h>
 #include <GL/glaux.h>
@@ -519,7 +520,8 @@ void menuFuncPntsMakeCenter()
 
 void menuFuncPntsPCANormalEva()
 {
-/*	if (!(_pDataBoard.m_pntsSetCudaBody)) {
+    /*
+	if (!(_pDataBoard.m_pntsSetCudaBody)) {
 		printf("None point-set is found!\n");	return;
 	}
 
@@ -531,7 +533,9 @@ void menuFuncPntsPCANormalEva()
 	_pDataBoard.m_bPntDispGPUorCPU=true;
 	_pDataBoard.m_pntsSetCudaBody->BuildGLList(_pDataBoard.m_bPntDispGPUorCPU,_pDataBoard.m_bPntNormalDisplay);
 	printf("Build GL List Time (ms): %ld\n",clock()-time); time=clock();
-	_pGLK.refresh();*/
+	*/
+    _pDataBoard.m_pntsSetBody->calculateNormals();
+	_pGLK.refresh();
 }
 
 void menuEvent(int idCommand)
