@@ -218,8 +218,8 @@ bool PntsSetBody::ImportOBJFile(char *filename)
 	//	Analysis of OBJ file
 	pntsNum=nvNum=0;
 	while(!feof(fp)) {
-		sprintf(buf,"");
-		sprintf(linebuf,"");
+// 		sprintf(buf,"");
+// 		sprintf(linebuf,"");
 		fgets(linebuf, 255, fp);
 		sscanf(linebuf,"%s",buf);
 	
@@ -240,8 +240,8 @@ bool PntsSetBody::ImportOBJFile(char *filename)
 	fp = fopen(filename, "r");	
 	int pntIndex=0,nvIndex=0;
 	while(!feof(fp)) {
-		sprintf(buf,"");
-		sprintf(linebuf,"");
+// 		sprintf(buf,"");
+// 		sprintf(linebuf,"");
 		fgets(linebuf, 255, fp);
 		sscanf(linebuf,"%s",buf);
 	

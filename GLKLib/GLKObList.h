@@ -6,7 +6,7 @@
 #ifndef _CW_GLKObject
 #define _CW_GLKObject
 
-#define NULL	0
+#define NULL	__null
 
 class GLKObject  
 {

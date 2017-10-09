@@ -7,7 +7,7 @@
 
 #include "GLK.h"
 
-typedef enum camera_type {ORBIT,PAN,ZOOM,ORBITPAN,ZOOMWINDOW};
+enum camera_type {ORBIT,PAN,ZOOM,ORBITPAN,ZOOMWINDOW};
 
 class GLKCameraTool : public GLKMouseTool
 {

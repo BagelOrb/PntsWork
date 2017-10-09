@@ -312,7 +312,7 @@ bool fileChosenByList(char directorty[], char selectedFileName[])
     }
     do{
         if ((dp = readdir(dirp)) != NULL) {
-            printf( "%*d: %s %*s", 2, fileNum++, dp->d_name, colsize-strlen(dp->d_name), " ");
+            printf( "%*d: %s %*s", 2, fileNum++, dp->d_name, int(colsize-strlen(dp->d_name)), " ");
             if ((fileNum%colNum)==0) printf("\n");
         }
     }while(dp!=NULL);
