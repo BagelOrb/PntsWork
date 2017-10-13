@@ -6,6 +6,7 @@
 #include <cassert>
 #include <unordered_map>
 #include <vector>
+#include <list>
 
 #include "intpoint.h"
 #include "floatpoint.h"
@@ -86,20 +87,44 @@ SGI_THIS::getKnn(const FPoint3 &query_pt, unsigned int k, coord_t radius) const
             return dist2 < b.dist2;
         }
     };
-    std::priority_queue<DistElem> queue;
+    std::list<DistElem> queue;
+    using it = typename std::list<DistElem>::iterator;
     const std::function<bool (const Elem&)> process_func =
-    [&query_pt, &queue, this](const Elem &elem)
+    [&query_pt, &queue, k, this](const Elem &elem)
     {
         double dist2 = (m_locator(elem) - query_pt).vSize2();
-        queue.emplace(dist2, elem);
+        bool inserted = false;
+        for (it i = queue.begin(); i != queue.end(); ++i)
+        {
+            if (i->dist2 > dist2)
+            {
+                queue.insert(i, DistElem(dist2, elem));
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted)
+        {
+            if (queue.size() < k)
+            {
+                queue.emplace_back(dist2, elem);
+            }
+        }
+        else
+        {
+            if (queue.size() > k)
+            {
+                queue.pop_back();
+            }
+        }
         return true;
     };
     SparseGrid<ElemT>::processNearby(query_pt, radius, process_func);
     std::vector<Elem> ret(k);
     for (int idx = 0; idx < k && !queue.empty(); idx++)
     {
-        ret[idx] = queue.top().elem;
-        queue.pop();
+        ret[idx] = queue.front().elem;
+        queue.pop_front();
     }
     return ret;
 }
