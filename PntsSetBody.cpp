@@ -300,6 +300,32 @@ bool PntsSetBody::ExportOBJFile(char *filename)
 
 void PntsSetBody::calculateNormals()
 {
+    int avg_cells_per_dimension = 20;
+    int k = 20;
+    
+    
+    
+    FPoint3 min = FPoint3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+    FPoint3 max = FPoint3(std::numeric_limits<float>::min(), std::numeric_limits<float>::min(), std::numeric_limits<float>::min());
+    
+    for (int i = 0; i < m_pntsNum; i++)
+    {
+        float& x = m_pntPosArray[i * 3];
+        float& y = m_pntPosArray[i * 3 + 1];
+        float& z = m_pntPosArray[i * 3 + 2];
+        min.x = std::min(min.x, x);
+        min.y = std::min(min.y, y);
+        min.z = std::min(min.z, z);
+        max.x = std::max(max.x, x);
+        max.y = std::max(max.y, y);
+        max.z = std::max(max.z, z);
+    }
+    
+    FPoint3 size = max - min;
+    float avg_size = (size.x + size.y + size.z) / 3.0;
+    float cell_size = avg_size / avg_cells_per_dimension;
+    
+    
     struct Locator
     {
         FPoint3 operator()(const FPoint3& p) const
@@ -307,7 +333,6 @@ void PntsSetBody::calculateNormals()
             return p;
         }
     };
-    float cell_size = 7.0;
     SparsePointGrid<FPoint3, Locator> grid(cell_size);
     
     for (int i = 0; i < m_pntsNum; i++)
@@ -318,7 +343,6 @@ void PntsSetBody::calculateNormals()
         grid.insert(FPoint3(x, y, z));
     }
     
-    int k = 20;
     
     for (int i = 0; i < m_pntsNum; i++)
     {
@@ -348,7 +372,7 @@ void PntsSetBody::calculateNormals()
             }
         }
         Vector3f last_component = es.eigenvectors().col(lowest_eigenvalue_idx);
-        if (last_component[2] < 0)
+        if (last_component[1] < 0)
         {
             last_component *= -1.0;
         }
