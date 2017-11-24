@@ -119,7 +119,11 @@ SGI_THIS::getKnn(const FPoint3 &query_pt, unsigned int k, coord_t radius) const
         }
         return true;
     };
-    SparseGrid<ElemT>::processNearby(query_pt, radius, process_func);
+    while (queue.size() < k)
+    {
+        SparseGrid<ElemT>::processNearby(query_pt, radius, process_func);
+        radius += SparseGrid<ElemT>::getCellSize();
+    }
     std::vector<Elem> ret(k);
     for (int idx = 0; idx < k && !queue.empty(); idx++)
     {

@@ -3,8 +3,14 @@
 
 #include "GLKLib/GLK.h"
 
+#include <vector>
+
 #define MAX(a,b)		(((a)>(b))?(a):(b))
 #define MIN(a,b)		(((a)<(b))?(a):(b))
+
+namespace rs {
+class float3; // forward declaration from rs::point3
+}
 
 class PntsSetBody : public GLKEntity
 {
@@ -41,7 +47,14 @@ public:
 	void SetPntPosArrayPtr(float *ptr) {m_pntPosArray=ptr;};
 	void SetNormalArrayPtr(float *ptr) {m_normalArray=ptr;};
 
-    void calculateNormals();
+    void calculateNormals(bool show_progress = false);
+
+    /*!
+     * Flip normals to align them with a given point
+     */
+    void alignNormals(float camera_normal_x, float camera_normal_y, float camera_normal_z);
+    
+    void setData(const std::vector<rs::float3>& points);
 private:
 	bool m_Lighting;	float m_range;
 	int m_drawListID_Points, m_drawListID_NormalArrow;

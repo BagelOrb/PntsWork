@@ -27,6 +27,12 @@
 #include "PntsSetBody.h"
 #include "PntsSetOperation.h"
 
+#include <librealsense/rs.hpp>
+#include <librealsense/rs.h>
+
+
+#include "utils/floatpoint.h"
+
 #define _MENU_QUIT						10001
 #define _MENU_FILE_OPEN					10002
 #define _MENU_FILE_SAVE					10003
@@ -52,6 +58,7 @@
 #define _MENU_VIEW_GPUCPUPNTSDISP		10119
 #define _MENU_VIEW_PNTNORMALVECDISP		10120
 #define _MENU_VIEW_SNAPSHOT				10121
+#define _MENU_CAPTURE_REALSENSE         10122
 
 #define _MENU_PNTS_PCANORMALEVA			10201
 #define _MENU_PNTS_VDFIELDCONSTRUCT		10202
@@ -127,6 +134,9 @@ void keyboardFunc(unsigned char key, int x, int y)
 	case 1:{	// ctrl+a
 			menuEvent(_MENU_VIEW_ZOOMALL); return;
 		   }break;
+    case 3: {   // ctrl+c
+            menuEvent(_MENU_CAPTURE_REALSENSE); return;
+    }break;
 	case 4:{	// ctrl+d
 			menuEvent(_MENU_VIEW_GPUCPUPNTSDISP); return;
 		   }break;
@@ -151,6 +161,8 @@ void keyboardFunc(unsigned char key, int x, int y)
 	case 26:{	// ctrl+z
 			menuEvent(_MENU_VIEW_SNAPSHOT); return;
 		   }break;
+    default:
+        std::cerr << "Keyboard event " << int(key) << " not captured\n";
 	}
 
 	pick_event pe;
@@ -500,6 +512,102 @@ void menuFuncFileOpen()
 	}
 }
 
+void menuFuncCaptureRealsense()
+{
+    // Turn on logging. We can separately enable logging to console or to file, and use different severity filters for each.
+    rs::log_to_console(rs::log_severity::warn);
+    //rs::log_to_file(rs::log_severity::debug, "librealsense.log");
+
+    printf("Starting Real Sense stuff...\n");
+    long time=clock();
+    
+    // Create a context object. This object owns the handles to all connected realsense devices.
+    rs::context ctx;
+    printf("There are %d connected RealSense devices.\n", ctx.get_device_count());
+    if(ctx.get_device_count() == 0) std::exit(1);
+
+    // This tutorial will access only a single device, but it is trivial to extend to multiple devices
+    rs::device * dev = ctx.get_device(0);
+    printf("\nUsing device 0, an %s\n", dev->get_name());
+    printf("    Serial number: %s\n", dev->get_serial());
+    printf("    Firmware version: %s\n", dev->get_firmware_version());
+
+    // Configure depth and color to run with the device's preferred settings
+    dev->enable_stream(rs::stream::depth, rs::preset::best_quality);
+    dev->enable_stream(rs::stream::color, rs::preset::best_quality);
+    dev->start();
+
+    // Camera warmup - Dropped several first frames to let auto-exposure stabilize
+    for (int i = 0; i < 30; i++)
+    {
+        dev->wait_for_frames();
+    }
+    
+//     const uint8_t * color_data = (const uint8_t*)dev->get_frame_data(rs::stream::color);
+    const uint16_t * depth_image = (const uint16_t*)dev->get_frame_data(rs::stream::depth);
+
+    // Retrieve camera parameters for mapping between depth and color
+    rs::intrinsics depth_intrin = dev->get_stream_intrinsics(rs::stream::depth);
+//     rs::extrinsics depth_to_color = dev->get_extrinsics(rs::stream::depth, rs::stream::color);
+//     rs::intrinsics color_intrin = dev->get_stream_intrinsics(rs::stream::color);
+    float scale = dev->get_depth_scale();
+    
+    std::vector<rs::float3> scan_points;
+    scan_points.reserve(depth_intrin.height * depth_intrin.width);
+    
+    for(int dy=0; dy<depth_intrin.height; ++dy)
+    {
+        for(int dx=0; dx<depth_intrin.width; ++dx)
+        {
+            // Retrieve the 16-bit depth value and map it into a depth in meters
+            uint16_t depth_value = depth_image[dy * depth_intrin.width + dx];
+            float depth_in_meters = depth_value * scale;
+
+            // Skip over pixels with a depth value of zero, which is used to indicate no data
+            if(depth_value == 0) continue;
+
+            // Map from pixel coordinates in the depth image to pixel coordinates in the color image
+            rs::float2 depth_pixel = {(float)dx, (float)dy};
+            rs::float3 depth_point = depth_intrin.deproject(depth_pixel, depth_in_meters);
+//             rs::float3 color_point = depth_to_color.transform(depth_point);
+//             rs::float2 color_pixel = color_intrin.project(color_point);
+            constexpr float scaling = 10;
+            scan_points.emplace_back(rs::float3{depth_point.x * scaling, depth_point.y*scaling, depth_point.z*scaling});
+        }
+    }
+    
+        
+    // set data to the data obtained from real sense
+    if (!(_pDataBoard.m_pntsSetBody)) 
+        _pDataBoard.m_pntsSetBody = new PntsSetBody;
+    else
+        _pGLK.DelDisplayObj2(_pDataBoard.m_pntsSetBody);
+    _pDataBoard.m_pntsSetBody->setData(scan_points);
+    
+    printf("Captured %li points in %ld ms\n", scan_points.size(), clock()-time); time=clock();
+    
+    _pDataBoard.m_pntsSetBody->CompRange();
+    _pDataBoard.m_pntsSetBody->BuildGLList(_pDataBoard.m_bPntNormalDisplay);
+    printf("--------------------------------------------\n");
+    _pGLK.AddDisplayObj(_pDataBoard.m_pntsSetBody, true);
+    printf("Build GL List Time (ms): %ld\n", clock()-time); time=clock();
+    
+    // COMPUTE NORMALS
+    std::cerr << "Computing normals...\n";
+    rs::float3 camera_direction;
+    {
+        rs::float2 middle = {float(depth_intrin.width) * .5f, float(depth_intrin.height) * .5f};
+        rs::float3 depth_point = depth_intrin.deproject(middle, 10);
+        rs::float3 deeper_point = depth_intrin.deproject(middle, 20);
+        camera_direction = {depth_point.x - deeper_point.x, depth_point.y - deeper_point.y, depth_point.z - deeper_point.z};
+    }
+    _pDataBoard.m_pntsSetBody->calculateNormals(true);
+    _pDataBoard.m_pntsSetBody->alignNormals(camera_direction.x, camera_direction.y, camera_direction.z);
+    std::cerr << "Done computing normals in "<< (clock()-time) << "s.\n"; time=clock();
+    
+    _pGLK.refresh();
+}
+
 void menuFuncQuit()
 {
 	exit(0);
@@ -548,6 +656,9 @@ void menuEvent(int idCommand)
 		//	File related
 	case _MENU_FILE_OPEN:menuFuncFileOpen();
 		break;
+    case _MENU_CAPTURE_REALSENSE:
+        menuFuncCaptureRealsense();
+        break;
 	case _MENU_FILE_SAVE:menuFuncFileSave();
 		break;
 
@@ -638,6 +749,7 @@ int buildPopupMenu (void)
 	fileSubMenu = glutCreateMenu(menuEvent);
 	glutAddMenuEntry("Open\tCtrl+O", _MENU_FILE_OPEN);
 	glutAddMenuEntry("Save\tCtrl+S", _MENU_FILE_SAVE);
+	glutAddMenuEntry("Capture RealSense\tCtrl+C", _MENU_CAPTURE_REALSENSE);
 
 	viewSubMenu = glutCreateMenu(menuEvent);
 	glutAddMenuEntry("Isometric", _MENU_VIEW_ISOMETRIC);
@@ -688,61 +800,64 @@ int buildPopupMenu (void)
 //	The major function of a program
 int main(int argc, char *argv[])
 {
-	glutInit(&argc, argv);
-//    glutInitDisplayMode(GLUT_DEPTH | GLUT_RGB | GLUT_DOUBLE | GLUT_MULTISAMPLE | GLUT_STENCIL);
-    glutInitDisplayMode(GLUT_DEPTH | GLUT_RGBA | GLUT_ALPHA | GLUT_DOUBLE | GLUT_STENCIL);
+    { // glut Frame
+        glutInit(&argc, argv);
+    //    glutInitDisplayMode(GLUT_DEPTH | GLUT_RGB | GLUT_DOUBLE | GLUT_MULTISAMPLE | GLUT_STENCIL);
+        glutInitDisplayMode(GLUT_DEPTH | GLUT_RGBA | GLUT_ALPHA | GLUT_DOUBLE | GLUT_STENCIL);
 
-    _pMainWnd=glutCreateWindow("PntWorks ver 0.1");
-    glutDisplayFunc(displayFunc);
-	glutReshapeWindow(1000, 750);
-	glutMouseFunc(mouseFunc);
-	glutMotionFunc(motionFunc);
-	glutPassiveMotionFunc(passiveMotionFunc);
-	glutKeyboardFunc(keyboardFunc);
-	glutSpecialFunc(specialKeyboardFunc);
-    glutReshapeFunc(reshapeFunc);
-	glutVisibilityFunc(visibleFunc);
+        _pMainWnd=glutCreateWindow("PntWorks ver 0.1");
+        glutDisplayFunc(displayFunc);
+        glutReshapeWindow(1000, 750);
+        glutMouseFunc(mouseFunc);
+        glutMotionFunc(motionFunc);
+        glutPassiveMotionFunc(passiveMotionFunc);
+        glutKeyboardFunc(keyboardFunc);
+        glutSpecialFunc(specialKeyboardFunc);
+        glutReshapeFunc(reshapeFunc);
+        glutVisibilityFunc(visibleFunc);
 
-	initFunc();	
-	_pGLK.SetClearColor(0.35f,0.35f,0.35f);
-//	_pGLK.SetClearColor(1.0f,1.0f,1.0f);
-	_pGLK.SetForegroundColor(1.0f,1.0f,1.0f);
-	_pGLK.m_bCoordDisp=false;
+        initFunc();	
+        _pGLK.SetClearColor(0.35f,0.35f,0.35f);
+    //	_pGLK.SetClearColor(1.0f,1.0f,1.0f);
+        _pGLK.SetForegroundColor(1.0f,1.0f,1.0f);
+        _pGLK.m_bCoordDisp=false;
 
-	_pGLK.SetProfile(false);
+        _pGLK.SetProfile(false);
 
-	displayFunc();
+        displayFunc();
+        
+    #if defined (__linux__)
+    #else
+        if(glewInit() != GLEW_OK) {
+            printf("glewInit failed. Exiting...\n");
+            return false;
+        }
+        if (glewIsSupported("GL_VERSION_2_0")) {
+            printf("\nReady for OpenGL 2.0\n");
+            printf("-------------------------------------------------\n");
+            printf("GLSL will be used to speed up sampling\n");
+        }
+        else {
+            printf("OpenGL 2.0 not supported\n");
+            return false;
+        }
+    #endif
+        
+        printf("PntWorks Started\n");
+        printf("--------------------------------------------------\n");
+        printf("Please select the following functions by hot-keys:\n\n");
+        printf("Ctrl - O      Open\n");
+        printf("Ctrl - C      Capture point cloud from RealSense\n");
+        printf("Ctrl - R      Orbit and Pan\n");
+        printf("Ctrl - W      Zoom Window\n");
+        printf("--------------------------------------------------\n");
+
+        buildPopupMenu();
+        glutAttachMenu(GLUT_RIGHT_BUTTON);
+        
+        glutSwapBuffers();
+        glutMainLoop();
+    }
     
-#if defined (__linux__)
-#else
-    if(glewInit() != GLEW_OK) {
-        printf("glewInit failed. Exiting...\n");
-        return false;
-    }
-    if (glewIsSupported("GL_VERSION_2_0")) {
-        printf("\nReady for OpenGL 2.0\n");
-        printf("-------------------------------------------------\n");
-        printf("GLSL will be used to speed up sampling\n");
-    }
-    else {
-        printf("OpenGL 2.0 not supported\n");
-        return false;
-    }
-#endif
-    
-    printf("PntWorks Started\n");
-	printf("--------------------------------------------------\n");
-	printf("Please select the following functions by hot-keys:\n\n");
-	printf("Ctrl - O      Open\n");
-	printf("Ctrl - R      Orbit and Pan\n");
-	printf("Ctrl - W      Zoom Window\n");
-	printf("--------------------------------------------------\n");
-
-	buildPopupMenu();
-	glutAttachMenu(GLUT_RIGHT_BUTTON);
-	
-    glutSwapBuffers();
-    glutMainLoop();
-
     return 0;             /* ANSI C requires main to return int. */
 }

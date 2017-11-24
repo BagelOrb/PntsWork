@@ -40,6 +40,17 @@ find_package(Eigen3 REQUIRED)
 
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+###########################
+# Find real sense
+###############
+
+find_package(realsense2  REQUIRED)
+
+set(DEPENDENCIES realsense)
+    if(NOT WIN32)
+        list(APPEND DEPENDENCIES m ${LIBUSB1_LIBRARIES})
+    endif()
+
 
 file(GLOB SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/GLKLib/GLK.cpp
@@ -53,4 +64,4 @@ file(GLOB SOURCE_FILES
 
 add_executable(${PROJECT_NAME}_bin main.cpp)
 
-target_link_libraries(${PROJECT_NAME}_bin ${SOURCE_FILES} ${GCC_COVERAGE_LINK_FLAGS} )
+target_link_libraries(${PROJECT_NAME}_bin ${SOURCE_FILES} ${GCC_COVERAGE_LINK_FLAGS} ${DEPENDENCIES} )

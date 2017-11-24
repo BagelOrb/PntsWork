@@ -25,6 +25,10 @@ using namespace cura;
 #include <eigen3/Eigen/Eigenvalues>
 using namespace Eigen;
 
+
+#include <librealsense/rs.hpp>
+#include <librealsense/rs.h>
+
 extern GLK _pGLK;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -174,7 +178,7 @@ bool PntsSetBody::ImportPWNFile(char *filename)
 	}
 	fclose(fp);
 	//--------------------------------------------------------------------------------------------------------
-	m_pntsNum=pntsNum;
+	m_pntsNum=pntsNum; 
 
 	printf("Pnt number: %d\n",pntsNum);
 
@@ -298,12 +302,13 @@ bool PntsSetBody::ExportOBJFile(char *filename)
 	return true;
 }
 
-void PntsSetBody::calculateNormals()
+void PntsSetBody::calculateNormals(bool show_progress)
 {
-    int avg_cells_per_dimension = 20;
+    int avg_cells_per_dimension = 1000;
     int k = 20;
     
-    
+    if (show_progress) std::cerr << "Constructing tree...\n";
+    int progress_steps = 100;
     
     FPoint3 min = FPoint3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
     FPoint3 max = FPoint3(std::numeric_limits<float>::min(), std::numeric_limits<float>::min(), std::numeric_limits<float>::min());
@@ -337,15 +342,20 @@ void PntsSetBody::calculateNormals()
     
     for (int i = 0; i < m_pntsNum; i++)
     {
+        if (show_progress && i % (m_pntsNum / progress_steps) == 0) std::cerr << ".";
         float& x = m_pntPosArray[i * 3];
         float& y = m_pntPosArray[i * 3 + 1];
         float& z = m_pntPosArray[i * 3 + 2];
         grid.insert(FPoint3(x, y, z));
     }
     
+    if (show_progress) std::cerr << "\n";
     
+    
+    if (show_progress) std::cerr << "Calculating normals...\n";
     for (int i = 0; i < m_pntsNum; i++)
     {
+        if (show_progress && i % (m_pntsNum / progress_steps) == 0) std::cerr << ".";
         FPoint3 p(m_pntPosArray[i * 3], m_pntPosArray[i * 3 + 1], m_pntPosArray[i * 3 + 2]);
         std::vector<FPoint3> knn = grid.getKnn(p, k, cell_size);
         Eigen::MatrixXf mat(knn.size(), 3);
@@ -383,5 +393,41 @@ void PntsSetBody::calculateNormals()
         normal_y = last_component[1];
         normal_z = last_component[2];
         
+    }
+    if (show_progress) std::cerr << "Done.";
+}
+
+void PntsSetBody::alignNormals(float camera_normal_x, float camera_normal_y, float camera_normal_z)
+{
+    for (int i = 0; i < m_pntsNum; i++)
+    {
+        float& normal_x = m_normalArray[i * 3];
+        float& normal_y = m_normalArray[i * 3 + 1];
+        float& normal_z = m_normalArray[i * 3 + 2];
+        float dot = camera_normal_x * normal_x + camera_normal_y * normal_y + camera_normal_z * normal_z;
+        if (dot < 0)
+        {
+            normal_x *= -1;
+            normal_y *= -1;
+            normal_z *= -1;
+        }
+    }
+}
+
+void PntsSetBody::setData(const std::vector<rs::float3>& points)
+{
+    ClearAll();
+    
+    m_pntsNum = points.size();
+//     if (m_pntPosArray) delete m_pntPosArray; 
+    m_pntPosArray = new float[points.size() * 3];
+//     if (m_normalArray) delete m_normalArray;
+    m_normalArray = new float[points.size() * 3];
+    for (unsigned int p_idx = 0; p_idx < points.size(); p_idx++)
+    {
+        const rs::float3& p = points[p_idx];
+        m_pntPosArray[p_idx*3+0] = p.x;
+        m_pntPosArray[p_idx*3+1] = p.y;
+        m_pntPosArray[p_idx*3+2] = p.z;
     }
 }
